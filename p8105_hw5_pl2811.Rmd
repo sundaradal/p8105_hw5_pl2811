@@ -1,0 +1,223 @@
+---
+title: "p8105_hw5_pl2811"
+author: "Pei Hsin Lin"
+date: "11/17/2021"
+output: 
+  html_document:
+    keep_md: true
+---
+ 
+#problem 1 
+
+```{r}
+library(tidyverse)
+library (readr)
+library(reshape2)
+library(ggplot2)
+library(mizer)
+library(ggplot2)
+library(plotly)
+```
+
+```{r}
+
+urlfile="https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv"
+
+#change unknown into NA, variable become numeric
+
+
+homicide_df<-read_csv(url(urlfile), na=c("","Unknown")) %>%
+  mutate(
+    city_state=str_c(city, state),
+  resolution=case_when(
+    disposition=="Closed without arrest" ~ "unsolved",
+    disposition=="Open/No arrest" ~ "unsolved",
+    disposition=="Closed by arrest" ~ "solved"
+    ))%>%
+  relocate(city_state)%>%
+filter(city_state != "TulsaAL")
+
+```
+
+Let's focus on Baltimore, MD.
+```{r}
+
+baltimore_df=
+  homicide_df %>%
+  filter(city_state=="BaltimoreMD")
+
+baltimore_summary=
+  baltimore_df %>%
+  summarize( 
+    unsolved=sum(resolution=="unsolved"),
+    n=n()
+    
+  )
+
+
+
+baltimore_test=
+  prop.test(x=baltimore_summary %>% pull (unsolved),
+          n=baltimore_summary %>% pull (n))
+
+baltimore_test %>%
+  broom::tidy()
+
+```
+
+#Let's try to iterate across cities!
+
+First off, write a function and test it on a few sample cities
+
+```{r}
+prop_test_function= function(city_df){
+  
+  city_summary=
+   city_df %>%
+  summarize( 
+    unsolved=sum(resolution=="unsolved"),
+    n=n()
+    
+  )
+
+city_test=
+  prop.test(x=city_summary %>% pull (unsolved),
+          n=city_summary %>% pull (n))
+
+return(city_test)
+
+}
+
+prop_test_function(baltimore_df)
+
+
+  homicide_df %>%
+  filter(city_state=="AlbuquerqueNM") %>%
+  prop_test_function()
+  
+   
+```
+
+Now, let's iterate acroos all cities
+```{r}
+  results_df=
+  homicide_df %>%
+  nest(data=uid:resolution) %>%
+mutate(
+  test_results=map(data, prop_test_function),
+  tidy_results=map(test_results, broom::tidy)
+  
+)%>%
+  select(city_state, tidy_results)%>%
+unnest(tidy_results)%>%
+  select(city_state, estimate, starts_with("conf"))
+
+
+ 
+```
+
+```{r}
+results_df %>%
+  mutate(city_state=fct_reorder(city_state, estimate))%>%
+  ggplot(aes(x=city_state, y=estimate))+
+  geom_point()+
+  geom_errorbar(aes(ymin=conf.low, ymax=conf.high))+
+    theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))
+
+```
+
+```{r}
+homicide_df %>%
+  group_by(city_state)%>%
+  summarise(unsolved=sum(resolution=="unsolved"),
+            n=n()
+          )%>%
+  mutate(
+test_results=map2(unsolved, n, prop.test),
+tidy_results=map(test_results,broom::tidy)
+  )%>%
+  unnest(tidy_results)%>%
+  select(city_state, estimate, starts_with("conf"))
+```
+
+##problem 2
+
+```{r}
+
+file_con<- tibble(file=list.files(path ="/Users/lin/Desktop/data/", pattern = "*con*"))
+
+file_exp<- tibble(file=list.files(path ="/Users/lin/Desktop/data/", pattern = "*exp*"))  
+
+
+datacon <-file_con %>%
+  map(~ read_csv(file.path("/Users/lin/Desktop/data/", .))) %>% 
+  reduce(rbind) %>% 
+  mutate(type="con")%>%
+   dplyr::mutate(subject_id = dplyr::row_number()) %>%
+   relocate(subject_id, type)%>% 
+ arrange(subject_id)
+
+dataexp <-file_exp %>%
+  map(~ read_csv(file.path("/Users/lin/Desktop/data/", .))) %>% 
+  reduce(rbind )%>% 
+  mutate(type="exp") %>%
+   dplyr::mutate(subject_id = dplyr::row_number()) %>%
+   relocate(subject_id, type)%>% 
+ arrange(subject_id)
+
+arm<-union(dataexp, datacon) %>% 
+  arrange(subject_id)
+arm
+
+df2 <- melt(arm, id.var = c("type", "subject_id")) 
+df2[,'subject_id'] <- as.factor(as.character(df2[,'subject_id']))
+
+# plot
+
+fig<-plot_ly(df2) %>% 
+    add_lines(x = ~variable, y = ~value, 
+              color = ~subject_id, linetype = ~type)
+fig<-fig %>%
+  layout(title = 'Arm experiment', xaxis = list(title = 'Week'), 
+         yaxis = list(title = 'arm data'),legend = list(title=list(text='control and experimental <br> of observations')))
+fig
+
+```
+
+##problem 3
+```{r}
+library(tidyverse)
+
+set.seed(10)
+  iris_with_missing = iris %>% 
+  map_df(~replace(.x, sample(1:150, 20), NA)) %>%
+  mutate(Species = as.character(Species))
+```
+
+write a function
+
+```{r, warning=FALSE}
+fill_in_missing=function(vector){
+  if(is.numeric(vector)){
+    fill_value=round(mean(!is.na(vector)),1)
+    vector[which(is.na(vector))]=fill_value
+  }
+   if(is.character(vector)){
+     vector[which(is.na(vector))]="virginica"
+     
+   }
+return(vector)
+}
+
+ iris_with_missing=
+  iris_with_missing %>%
+  mutate(
+    Sepal.Length=map(Sepal.Length, fill_in_missing),
+    Sepal.Width=map(Sepal.Width,fill_in_missing),
+    Petal.Length=map(Petal.Length, fill_in_missing),
+    Petal.Width=map(Petal.Width, fill_in_missing),
+    Species=map(Species, fill_in_missing)
+    ) %>% unnest(Sepal.Length, Sepal.Width, Petal.Length, Petal.Width, Species)
+ 
+  iris_with_missing
+```
