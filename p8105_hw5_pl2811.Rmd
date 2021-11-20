@@ -169,19 +169,20 @@ arm<-union(dataexp, datacon) %>%
   arrange(subject_id)
 arm
 
-df2 <- melt(arm, id.var = c("type", "subject_id")) 
-df2[,'subject_id'] <- as.factor(as.character(df2[,'subject_id']))
+arm <- melt(arm, id.var = c("type", "subject_id")) 
+arm[,'subject_id'] <- as.factor(as.character(arm[,'subject_id']))
 
 # plot
 
-fig<-plot_ly(df2) %>% 
+fig<-plot_ly(arm) %>% 
     add_lines(x = ~variable, y = ~value, 
               color = ~subject_id, linetype = ~type)
 fig<-fig %>%
   layout(title = 'Arm experiment', xaxis = list(title = 'Week'), 
-         yaxis = list(title = 'arm data'),legend = list(title=list(text='control and experimental <br> of observations')))
+         yaxis = list(title = 'arm data'),legend = list(title=list(text='control and experimental <br> of subjects')))
 fig
 
+#The experimental subjects are much higher than the control subjects
 ```
 
 ##problem 3
@@ -197,6 +198,7 @@ set.seed(10)
 write a function
 
 ```{r, warning=FALSE}
+
 fill_in_missing=function(vector){
   if(is.numeric(vector)){
     fill_value=round(mean(!is.na(vector)),1)
